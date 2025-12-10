@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ghostty High Visibility</title>
+    <link rel="icon" href="cube-3d.ico" type="image/x-icon">
+    <style>
+        :root {
+            --mx: 50%;
+            --my: 50%;
+            --core-color: #e0f7ff; /* Bright White-Blue */
+            --glow-color: #4d4dff; /* Deep Neon Blue */
+            --bg-color: #020205;   /* Almost Black */
+        }
+
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: var(--bg-color);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            font-family: 'Courier New', Courier, monospace;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        #terminal {
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100%;
+            justify-content: center;
+            
+            color: var(--core-color);
+            
+            /* The Glow Effect */
+            text-shadow: 0 0 4px var(--glow-color), 0 0 10px var(--glow-color);
+            
+            user-select: none;
+            cursor: crosshair;
+            
+            background: radial-gradient(
+                circle 800px at var(--mx) var(--my), 
+                #111122 0%, 
+                #000000 60%
+            );
+        }
+
+        /* The rows */
+        .row {
+            white-space: pre; 
+            text-align: center;
+            line-height: 1.0; 
+            width: 100%;
+            font-weight: 900; 
+            letter-spacing: 0px; 
+            font-size: inherit;
+        }
+
+        /* --- 3D TITLE STYLES --- */
+        #title-container {
+            position: absolute;
+            top: 5vh;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 20;
+            perspective: 800px;
+            pointer-events: none;
+            width: 100%; 
+            display: flex;
+            justify-content: center;
+        }
+
+        #title-wrapper {
+            position: relative;
+            transform-style: preserve-3d;
+            transform-origin: center center;
+        }
+
+        .ascii-art {
+            font-family: 'Courier New', Courier, monospace;
+            white-space: pre;
+            font-weight: 900;
+            line-height: 1.0;
+            /* Responsive font size for the title */
+            font-size: 0.7vw; 
+            text-align: center;
+        }
+
+        /* Front Layer */
+        .title-front {
+            position: relative;
+            color: var(--core-color);
+            /* Initial glow, will be animated via JS */
+            text-shadow: 0 0 10px var(--glow-color);
+            transform: translateZ(0px);
+            z-index: 2;
+        }
+
+        /* Back/Shadow Layer */
+        .title-back {
+            position: absolute;
+            top: 0;
+            left: 0;
+            color: var(--glow-color);
+            opacity: 0.3;
+            transform: translateZ(-30px); /* Deeper depth for larger text */
+            filter: blur(4px);
+            z-index: 1;
+        }
+
+        @media (min-width: 1400px) {
+            .ascii-art {
+                font-size: 10px; /* Cap size on huge screens */
+            }
+        }
+        
+        @media (max-width: 800px) {
+            .ascii-art {
+                font-size: 1.2vw; /* Scale slightly up on smaller screens relative to width */
+            }
+            #title-container {
+                top: 10vh; /* Move down slightly */
+            }
+        }
+
+    </style>
+</head>
+<body>
+    
+    <!-- 3D Header -->
+    <div id="title-container">
+        <div id="title-wrapper">
+            <div id="title-back" class="ascii-art title-back"></div>
+            <div id="title-front" class="ascii-art title-front"></div>
+        </div>
+    </div>
+
+    <div id="terminal"></div>
+
+    <script>
+        const terminal = document.getElementById('terminal');
+
+        // Configuration
+        const config = {
+            fontSize: 14, 
+            chars: "·+x*#%&8@$MW", 
+            speed: 0.002, 
+            scale: 0.12,  
+            rows: 0, 
+            cols: 0
+        };
+
+        let time = 0;
+        let mouse = { x: 0, y: 0 };
+        let targetMouse = { x: 0, y: 0 };
+        let rowElements = [];
+
+        // --- TITLE INIT ---
+        const titleLines = [
+            "  ██████  ██    ██ ██████  ███████      ██████  ██    ██ ██████  ███████      ██   ██ ██",
+            " ██       ██    ██ ██   ██ ██          ██       ██    ██ ██   ██ ██           ██   ██ ██",
+            " ██       ██    ██ ██████  █████       ██       ██    ██ ██████  █████        ███████ ██",
+            " ██       ██    ██ ██   ██ ██          ██       ██    ██ ██   ██ ██           ██   ██ ██",
+            "  ██████   ██████  ██████  ███████      ██████   ██████  ██████  ███████      ██   ██ ██"
+        ];
+        const titleText = titleLines.join('\n');
+        
+        const titleFront = document.getElementById('title-front');
+        const titleBack = document.getElementById('title-back');
+        const titleWrapper = document.getElementById('title-wrapper');
+
+        titleFront.textContent = titleText;
+        titleBack.textContent = titleText;
+
+
+        function initGrid() {
+            terminal.innerHTML = '';
+            rowElements = [];
+
+            const width = window.innerWidth;
+            const height = window.innerHeight;
+
+            const charWidth = config.fontSize * 0.6; 
+            const charHeight = config.fontSize * 1.0;
+
+            config.cols = Math.floor(width / charWidth);
+            config.rows = Math.floor(height / charHeight);
+            
+            if (config.cols > 160) config.cols = 160;
+            if (config.rows > 70) config.rows = 70;
+
+            terminal.style.fontSize = `${config.fontSize}px`;
+
+            for (let y = 0; y < config.rows; y++) {
+                const div = document.createElement('div');
+                div.className = 'row';
+                div.textContent = ' '.repeat(config.cols); 
+                terminal.appendChild(div);
+                rowElements.push(div);
+            }
+        }
+
+        window.addEventListener('resize', () => {
+            clearTimeout(window.resizeTimer);
+            window.resizeTimer = setTimeout(initGrid, 200);
+        });
+
+        window.addEventListener('mousemove', e => {
+            targetMouse.x = (e.clientX - window.innerWidth/2) / window.innerWidth;
+            targetMouse.y = (e.clientY - window.innerHeight/2) / window.innerHeight;
+
+            terminal.style.setProperty('--mx', `${e.clientX}px`);
+            terminal.style.setProperty('--my', `${e.clientY}px`);
+        });
+        
+        window.addEventListener('touchmove', e => {
+            const touch = e.touches[0];
+            targetMouse.x = (touch.clientX - window.innerWidth/2) / window.innerWidth;
+            targetMouse.y = (touch.clientY - window.innerHeight/2) / window.innerHeight;
+
+            terminal.style.setProperty('--mx', `${touch.clientX}px`);
+            terminal.style.setProperty('--my', `${touch.clientY}px`);
+        });
+
+        initGrid();
+
+        // ---------------------------------------------------------
+        // MATH HELPERS
+        // ---------------------------------------------------------
+
+        function plasma(x, y, t) {
+            let v = 0;
+            v += Math.sin((x * 10 + t));
+            v += Math.sin((y * 10 + t) / 2.0);
+            v += Math.sin((x * 10 + y * 11 + t) / 2.0);
+            let cx = x + 0.5 * Math.sin(t / 5.0);
+            let cy = y + 0.5 * Math.cos(t / 3.0);
+            v += Math.sin(Math.sqrt(100 * (cx * cx + cy * cy) + 1) + t);
+            v = v / 2.0;
+            return v; 
+        }
+
+        // Signed Distance Function for a Box (Cube)
+        function sdBox(p, b) {
+            let d = {
+                x: Math.abs(p.x) - b.x,
+                y: Math.abs(p.y) - b.y,
+                z: Math.abs(p.z) - b.z
+            };
+            
+            let outsideDist = Math.sqrt(
+                Math.max(d.x, 0)**2 + 
+                Math.max(d.y, 0)**2 + 
+                Math.max(d.z, 0)**2
+            );
+            
+            let insideDist = Math.min(Math.max(d.x, Math.max(d.y, d.z)), 0.0);
+            
+            return outsideDist + insideDist;
+        }
+
+        function rotateX(p, theta) {
+            let c = Math.cos(theta);
+            let s = Math.sin(theta);
+            return {
+                x: p.x,
+                y: p.y * c - p.z * s,
+                z: p.y * s + p.z * c
+            };
+        }
+
+        function rotateY(p, theta) {
+            let c = Math.cos(theta);
+            let s = Math.sin(theta);
+            return {
+                x: p.x * c + p.z * s,
+                y: p.y,
+                z: -p.x * s + p.z * c
+            };
+        }
+        
+        function rotateZ(p, theta) {
+            let c = Math.cos(theta);
+            let s = Math.sin(theta);
+            return {
+                x: p.x * c - p.y * s,
+                y: p.x * s + p.y * c,
+                z: p.z
+            };
+        }
+
+        function getCubeDist(x, y, t) {
+            // Normalized coordinates (-1 to 1 based on height)
+            let nx = (x - config.cols / 2) / (config.rows * 0.5); 
+            let ny = (y - config.rows / 2) / (config.rows * 0.5);
+
+            // Create a 3D point p
+            // We only have 2D screen coords (nx, ny), so we check a "slice" at z=0 
+            // BUT for a rotating 3D effect without full raymarching, 
+            // we inversely rotate the point (nx, ny, 0) to check if it's inside the static cube.
+            
+            let p = { x: nx, y: ny, z: 0 };
+
+            // Rotate the "camera" / point around the center
+            // Mouse affects rotation
+            let rotXVal = t * 1.5 + mouse.y * 2.0;
+            let rotYVal = t * 2.0 + mouse.x * 2.0;
+            
+            p = rotateY(p, rotYVal);
+            p = rotateX(p, rotXVal);
+            
+            // Define Cube dimensions
+            let boxSize = { x: 0.5, y: 0.5, z: 0.5 };
+            
+            // Get distance
+            let dist = sdBox(p, boxSize);
+            
+            // Chamfer/Round edges slightly for better look
+            return dist - 0.05; 
+        }
+
+        // ---------------------------------------------------------
+        // RENDER LOOP
+        // ---------------------------------------------------------
+        function update() {
+            time += config.speed;
+            
+            // --- Title Animation ---
+            const titleTime = time * 50; 
+            const rotX = Math.sin(titleTime * 0.5) * 5; 
+            const rotY = Math.sin(titleTime * 0.3) * 7; 
+            titleWrapper.style.transform = `rotateX(${rotX}deg) rotateY(${rotY}deg)`;
+            
+            const glowIntensity = 10 + Math.sin(time * 50) * 5;
+            const glowColorShift = Math.sin(time * 20) * 20; 
+            titleFront.style.textShadow = `0 0 ${glowIntensity}px hsl(${240 + glowColorShift}, 100%, 70%)`;
+
+            mouse.x += (targetMouse.x - mouse.x) * 0.05; 
+            mouse.y += (targetMouse.y - mouse.y) * 0.05;
+
+            for (let y = 0; y < config.rows; y++) {
+                
+                let lineBuffer = "";
+
+                for (let x = 0; x < config.cols; x++) {
+                    
+                    let dist = getCubeDist(x, y, time);
+                    
+                    // Thinner threshold for outline or fill?
+                    // Let's keep fill logic but standard box is distinct.
+                    
+                    if (dist < 0.0) { 
+                        // Inside Cube
+                        
+                        let noiseVal = plasma(x * config.scale, y * config.scale - time * 10, time);
+                        
+                        // Edge highlighting
+                        // dist is negative inside. closer to 0 is edge.
+                        let edgeFactor = Math.smoothstep ? Math.smoothstep(-0.2, 0.0, dist) : (1.0 - Math.min(Math.abs(dist)*3, 1));
+                        
+                        let intensity = (noiseVal + 1) / 2;
+                        
+                        // Boost edges
+                        intensity = intensity * 0.5 + edgeFactor * 0.8;
+                        
+                        if (intensity < 0) intensity = 0;
+                        if (intensity > 1) intensity = 1;
+
+                        let charIndex = Math.floor(intensity * (config.chars.length - 1));
+                        let char = config.chars[charIndex];
+                        
+                        if (!char) char = config.chars[0];
+
+                        lineBuffer += char;
+                    } else {
+                        lineBuffer += " ";
+                    }
+                }
+
+                if (rowElements[y].textContent !== lineBuffer) {
+                    rowElements[y].textContent = lineBuffer;
+                }
+            }
+
+            requestAnimationFrame(update);
+        }
+
+        update();
+
+    </script>
+</body>
+</html>
